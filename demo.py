@@ -19,12 +19,13 @@ import postproc
 
 parser = argparse.ArgumentParser(description='DuLa-Net inference scripts')
 
-parser.add_argument('--backbone', default='resnet18',  
+parser.add_argument('--backbone', default='resnet50',
                     choices=['resnet18', 'resnet34', 'resnet50'], help='backbone network')
-parser.add_argument('--ckpt',  default='./Model/ckpt/res18_realtor.pkl',  
+parser.add_argument('--ckpt',  default='./Model/ckpt/res50_realtor.pkl',
                     help='path to the model ckpt file')
 
 parser.add_argument('--input', type=str, help='input panorama image')
+parser.add_argument('--input_dir', type=str, help='input panorama image dir')
 parser.add_argument('--output',  default='./output', type=str, help='output path')
 
 parser.add_argument('--cpu', action='store_true', help='using cpu or not')
@@ -36,7 +37,7 @@ device = torch.device('cuda' if torch.cuda.is_available() and not args.cpu
                         else 'cpu')  
 
 def predict(model, input_path):
-    print('predict')
+    print('predict', input_path)
     model.eval()
 
     img = Image.open(input_path).convert("RGB")
@@ -80,12 +81,18 @@ def demo():
     model = DuLaNet(args.backbone).to(device)
     
     assert args.ckpt is not None, "need pretrained model"
-    assert args.input, "need an input for prediction"
+
 
     #model.load_state_dict(torch.load(args.ckpt))
     model.load_state_dict(torch.load(args.ckpt, map_location=str(device)))
 
-    predict(model, args.input)
+    if args.input_dir and len(args.input_dir) != 0:
+        for image_name in os.listdir(args.input_dir):
+            input_path = os.path.join(args.input_dir, image_name)
+            predict(model, input_path)
+    else:
+        assert args.input, "need an input for prediction"
+        predict(model, args.input)
 
 if __name__ == '__main__':
     demo()
