@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 class E2P(nn.Module):
-    def __init__(self, equ_size, out_dim, fov, radius=128, up_flip=True, gpu=True):
+    def __init__(self, equ_size, out_dim, fov, radius=128, up_flip=True, gpu=False):
         super(E2P, self).__init__()
 
         self.equ_h = equ_size[0]

@@ -1,12 +1,15 @@
 import torch.nn as nn
 import math
 import torch.utils.model_zoo as model_zoo
+import torch
+from tensorboardX import SummaryWriter
 
 
 def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
+
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -200,6 +203,8 @@ def resnet152(pretrained=False, **kwargs):
 
 
 if __name__ == '__main__':
-
+    writer = SummaryWriter('runs/resnet18')
     model = resnet18()
-    print(model)
+    batch = torch.ones(1, 3, 512, 1024)
+    writer.add_graph(model, batch)
+    # print(model)

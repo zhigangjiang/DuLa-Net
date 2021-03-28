@@ -36,12 +36,11 @@ python demo.py --input figs\001.jpg --backbone resnet50 --ckpt Model\ckpt\res50_
 ```
 
 ## More Results
-
+:q:
 <img src='figs/002.jpg' width=50%><img src='figs/002_vis.jpg' width=50%>
 <img src='figs/003.jpg' width=50%><img src='figs/003_vis.jpg' width=50%>
 <img src='figs/004.jpg' width=50%><img src='figs/004_vis.jpg' width=50%>
-
-
+:
 ## Dataset
 The Realtor360 dataset currently couldn’t be made publicly available due to some legal privacy issue. Please refer to the MatterportLayout dataset(coming soon), which resembles the Realtor360 in all aspects.
 
@@ -50,3 +49,5 @@ The Realtor360 dataset currently couldn’t be made publicly available due to so
 [pretrained models]: <https://drive.google.com/file/d/1AJ-RsVW8XTvlaJ1hzGIMu4L2aDiEWc4z/view?usp=sharing>
 [Arxiv]: <https://arxiv.org/abs/1811.11977>
 [Project]: <https://cgv.cs.nthu.edu.tw/projects/dulanet>
+
+pip install opencv-contrib-python

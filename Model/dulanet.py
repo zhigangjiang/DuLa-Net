@@ -4,20 +4,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 
-from .resnet import resnet18, resnet34, resnet50
-from .e2p import E2P
+from Model.resnet import resnet18, resnet34, resnet50
+from Model.e2p import E2P
 
 sys.path.append('..')
 import config as cf
+from tensorboardX import SummaryWriter
+
 
 def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
 
+
 def conv3x3_relu(in_planes, out_planes):
     return nn.Sequential(
         nn.Conv2d(in_planes, out_planes, kernel_size=3, padding=1),
         nn.ReLU(inplace=True))
+
 
 class DulaNet_Branch(nn.Module):
     def __init__(self, backbone):
@@ -60,7 +64,7 @@ class DulaNet_Branch(nn.Module):
         return out
     
 class DuLaNet(nn.Module):
-    def __init__(self, backbone):
+    def __init__(self, backbone, gpu=False):
         super(DuLaNet, self).__init__()
 
         self.model_equi = DulaNet_Branch(backbone)
@@ -74,10 +78,10 @@ class DuLaNet(nn.Module):
                     nn.Linear(64, 1)
                 )
         
-        self.e2p = E2P(cf.pano_size, cf.fp_size, cf.fp_fov)
+        self.e2p = E2P(cf.pano_size, cf.fp_size, cf.fp_fov, gpu=gpu)
 
         fuse_dim = [int((cf.pano_size[0]/32)*2**i) for i in range(6)]
-        self.e2ps_f = [E2P((n, n*2), n, cf.fp_fov) for n in fuse_dim]
+        self.e2ps_f = [E2P((n, n*2), n, cf.fp_fov, gpu=gpu) for n in fuse_dim]
 
     def forward(self, pano_view):
 
@@ -100,10 +104,13 @@ class DuLaNet(nn.Module):
 
                 
 if __name__ == '__main__':
-   
-    model = DuLaNet(backbone='resnet50').cuda()
-    batch = torch.ones(4, 3, 512, 1024).cuda()
+    writer = SummaryWriter('runs/DuLaNet')
+    model = DuLaNet(backbone='resnet50', gpu=False)  # .cuda()
+    batch = torch.ones(4, 3, 512, 1024)  # .cuda()
     fpmap, fcmap, height = model(batch)
+    writer.add_graph(model, batch)
+
     print(fpmap.shape)
     print(fcmap.shape)
     print(height.shape)
+
