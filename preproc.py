@@ -33,7 +33,7 @@ def get_mfc(ceil_coor, floor_coor):
     surface = np.zeros((args.H, args.W), dtype=np.int32)
     surface[np.round(y0).astype(int), np.arange(args.W)] = 1
     surface[np.round(y1).astype(int), np.arange(args.W)] = -1
-    surface = np.cumsum(surface, axis=0)
+    surface = np.cumsum(surface, axis=0) * 255
 
     return surface
 

@@ -27,12 +27,11 @@ class PanoDataset(data.Dataset):
         whether to performe random gamma augmentation
         Note that it only perfome on first in cat_list
     '''
-    def __init__(self, root_dir, cat_list, e2p,
+    def __init__(self, root_dir, cat_list,
                  flip=False, rotate=False, gamma=False, noise=False, contrast=False,
                  return_filenames=False):
         self.root_dir = root_dir
         self.cat_list = cat_list
-        self.e2p = e2p
         self.fnames = [
             fname for fname in os.listdir(os.path.join(root_dir, cat_list[0]))]
         self.flip = flip
@@ -41,6 +40,7 @@ class PanoDataset(data.Dataset):
         self.noise = noise
         self.contrast = contrast
         self.return_filenames = return_filenames
+
         self._check_dataset()
 
     def _check_dataset(self):
@@ -56,16 +56,12 @@ class PanoDataset(data.Dataset):
         path_list = [
             os.path.join(self.root_dir, cat, self.fnames[idx])
             for cat in self.cat_list]
-
         pilimg_list = [Image.open(path) for path in path_list]
-
-        mfc = pilimg_list[-1]
-        [mfc_up, mfc_down] = self.e2p(mfc_img)
-
         if self.contrast:
             p = np.random.uniform(0.5, 2)
             pilimg_list = [ImageEnhance.Contrast(pil_img).enhance(p)
                            for pil_img in pilimg_list]
+
         npimg_list = [np.array(pil_img, np.float32) / 255 for pil_img in pilimg_list]
 
         # Random flip
@@ -104,7 +100,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--root_dir', default='data/train')
-    parser.add_argument('--cat_list', default=['img', 'line', 'edge', 'cor'], nargs='+')
+    parser.add_argument('--cat_list', default=['img', 'line', 'mfc'], nargs='+')
     parser.add_argument('--flip', action='store_true')
     parser.add_argument('--rotate', action='store_true')
     args = parser.parse_args()
