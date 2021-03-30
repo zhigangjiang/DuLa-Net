@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import config as cf
 from Model import DuLaNet, E2P
+import matplotlib.pyplot as plt
 
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -68,14 +69,14 @@ parser.add_argument('--no_cuda', action='store_true',
                     help='disable cuda')
 parser.add_argument('--seed', default=277, type=int,
                     help='manual seed')
-parser.add_argument('--disp_iter', type=int, default=20,
+parser.add_argument('--disp_iter', type=int, default=2,
                     help='iterations frequency to display')
 parser.add_argument('--save_every', type=int, default=5,
                     help='epochs frequency to save state_dict')
 args = parser.parse_args()
 
 
-device = torch.device('cuda' if torch.cuda.is_available() and not args.cpu
+device = torch.device('cuda' if torch.cuda.is_available() and not args.no_cuda
                         else 'cpu')
 print('device:{}'.format(device))
 
@@ -106,7 +107,7 @@ loader_valid = DataLoader(dataset_valid, args.batch_size_valid,
 
 
 # Create model
-model = DuLaNet(args.backbone).to(device)
+model = DuLaNet(args.backbone, gpu=True).to(device)
 
 # Create optimizer
 if args.optim == 'SGD':
@@ -127,7 +128,9 @@ args.max_iters = args.epochs * len(loader_train)
 args.running_lr = args.warmup_lr if args.warmup_epochs > 0 else args.lr
 args.cur_iter = 0
 
-criti = nn.BCELoss(reduction='sum')
+BCELoss = nn.BCELoss(reduction='sum')
+L1Loss = nn.L1Loss(reduction='sum')
+
 print("arguments:")
 for arg in vars(args):
     print(arg, ":", getattr(args, arg))
@@ -139,7 +142,7 @@ print('%d iters per epoch for valid' % len(loader_valid))
 print(' start training '.center(80, '='))
 
 
-e2p = E2P(cf.pano_size, cf.fp_size, cf.fp_fov)
+e2p = E2P(cf.pano_size, cf.fp_size, cf.fp_fov, gpu=True)
 # Start training
 for ith_epoch in range(1, args.epochs + 1):
 
@@ -154,17 +157,26 @@ for ith_epoch in range(1, args.epochs + 1):
         # Prepare data
         x = torch.cat([datas[i]
                       for i in range(len(args.input_cat))], dim=1).to(device)
-        fc = datas[-1].to(device)
-        [fp, _] = e2p(fc)
+        h = datas[-1].to(device)
+        fc = datas[-2].to(device)
+
+        [fp, fp_down] = e2p(fc)
+
+        # plt.imshow(fc[0][0].detach().numpy())
+        # plt.show()
+        # plt.imshow(fp[0][0].detach().numpy())
+        # plt.show()
 
         # Feedforward
         [fp_, fc_, h_]  = model(x)
 
 
+
         # Compute loss
-        loss_fc = criti(fc_, fc)
-        loss_fp = criti(fp_, fp)
-        loss = loss_fc + loss_fp
+        loss_fc = BCELoss(fc_, fc)
+        loss_fp = BCELoss(fp_, fp)
+        loss_h = L1Loss(h_, h)
+        loss = loss_fc + loss_fp + 0.5 * loss_h
 
 
 
@@ -179,8 +191,16 @@ for ith_epoch in range(1, args.epochs + 1):
         # Statitical result
         train_loss += loss
         if args.cur_iter % args.disp_iter == 0:
+
+            ff = fc_.cpu()
+            fs = fp_.cpu()
+            plt.imshow(ff[0][0].detach().numpy())
+            plt.show()
+            plt.imshow(fs[0][0].detach().numpy())
+            plt.show()
+
             print('iter %d (epoch %d) | lr %.6f | %s' % (
-                args.cur_iter, ith_epoch, args.running_lr, train_losses/len(loader_train)),
+                args.cur_iter, ith_epoch, args.running_lr, train_loss/len(loader_train)),
                 flush=True)
 
     # Dump model

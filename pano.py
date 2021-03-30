@@ -26,6 +26,18 @@ def uv2xy(u, v, z=-50):
     y = c * np.sin(u)
     return x, y
 
+def calc_height(coor, floor_z=-1.68, w=1024, h=512):
+    heights = []
+    for i in range(0, len(coor), 2):
+        y_c = coor[i][1]
+        y_f = coor[i+1][1]
+
+        assert y_f > y_c and y_f > h * 0.5
+
+        s_c = (h * 0.5 - y_c) / (y_f - h * 0.5)
+        assert s_c > 0
+        heights.append(-floor_z * (1 + s_c))
+    return np.array(heights).mean()
 
 def pano_connect_points(p1, p2, z=-50, w=1024, h=512):
     u1 = coorx2u(p1[0], w)

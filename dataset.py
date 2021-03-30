@@ -5,7 +5,7 @@ from PIL import ImageEnhance
 
 import torch
 import torch.utils.data as data
-
+import pano
 
 class PanoDataset(data.Dataset):
     '''
@@ -56,6 +56,12 @@ class PanoDataset(data.Dataset):
         path_list = [
             os.path.join(self.root_dir, cat, self.fnames[idx])
             for cat in self.cat_list]
+
+        label_path = os.path.join(self.root_dir, 'label_cor', self.fnames[idx].replace('.png', '.txt'))
+        with open(label_path) as f:
+            gt = np.array([line.strip().split() for line in f], np.float64)
+        h = pano.calc_height(gt, -1.68)
+
         pilimg_list = [Image.open(path) for path in path_list]
         if self.contrast:
             p = np.random.uniform(0.5, 2)
@@ -83,11 +89,14 @@ class PanoDataset(data.Dataset):
             noise = np.random.randn(*npimg_list[0].shape) * 0.05
             npimg_list[0] = npimg_list[0] + noise
 
+
+
         # Transpose to C x H x W
         npimg_list = [
             np.expand_dims(npimg, axis=0) if npimg.ndim == 2 else npimg.transpose([2, 0, 1])
             for npimg in npimg_list]
 
+        npimg_list.append(np.array([h]))
         if self.return_filenames:
             return tuple(torch.FloatTensor(npimg) for npimg in npimg_list) + \
                 (self.fnames[idx], )

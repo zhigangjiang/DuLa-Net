@@ -1,12 +1,12 @@
 import os
 import argparse
 import numpy as np
-from pano import pano_connect_points
+from pano import *
 import cv2
-
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--root_dir',  help='dataset root dir', default='/Users/jiangzhigang/Code/pytorch-layoutnet/data')
+parser.add_argument('--root_dir', help='dataset root dir', default='./data')
 parser.add_argument('--datasets', help='dataset names', default=['train', 'test', 'valid'])
 parser.add_argument('--H', default=512)
 parser.add_argument('--W', default=1024)
@@ -19,7 +19,6 @@ print("-" * 100)
 
 
 def get_mfc(ceil_coor, floor_coor):
-
     y0 = np.zeros(args.W)
     y1 = np.zeros(args.W)
 
@@ -34,6 +33,7 @@ def get_mfc(ceil_coor, floor_coor):
     surface[np.round(y0).astype(int), np.arange(args.W)] = 1
     surface[np.round(y1).astype(int), np.arange(args.W)] = -1
     surface = np.cumsum(surface, axis=0) * 255
+    surface = -surface + 255
 
     return surface
 
@@ -56,7 +56,16 @@ def pre_process():
             with open(label_path) as f:
                 gt = np.array([line.strip().split() for line in f], np.float64)
             mfc = get_mfc(gt[0::2], gt[1::2])
+
             cv2.imwrite(mfc_path, mfc)
+
+            # plt.imshow(cv2.imread(img_path))
+            # plt.show()
+            #
+            # plt.imshow(mfc)
+            # plt.show()
+
+            continue
 
 if __name__ == '__main__':
     pre_process()
