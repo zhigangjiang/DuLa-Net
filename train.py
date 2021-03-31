@@ -9,17 +9,22 @@ import torch
 import config as cf
 from Model import DuLaNet, E2P
 import matplotlib.pyplot as plt
-
+from tensorboardX import SummaryWriter
+import Utils.tools as tools
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--id', required=True,
                     help='experiment id to name checkpoints')
-
+parser.add_argument('--mode', required=True, choices=['train', 'continue'],
+                    help='the run mode')
 parser.add_argument('--backbone', default='resnet18',
                     choices=['resnet18', 'resnet34', 'resnet50'], help='backbone network')
-
 parser.add_argument('--ckpt', default='./Model/ckpt',
                     help='folder to output checkpoints')
+parser.add_argument('--ckpt_path', default='',
+                    help='checkpoint path for continue train')
+parser.add_argument('--logdir', default='./run/loss',
+                    help='logdir of tensorboard')
 # Dataset related arguments
 parser.add_argument('--root_dir_train', default='data/train',
                     help='root directory for training data')
@@ -42,17 +47,17 @@ parser.add_argument('--contrast', action='store_true',
 parser.add_argument('--num_workers', default=0, type=int,
                     help='numbers of workers for dataloaders')
 # optimization related arguments
-parser.add_argument('--batch_size_train', default=4, type=int,
+parser.add_argument('--batch_size_train', default=12, type=int,
                     help='training mini-batch size')
-parser.add_argument('--batch_size_valid', default=4, type=int,
+parser.add_argument('--batch_size_valid', default=12, type=int,
                     help='validation mini-batch size')
-parser.add_argument('--epochs', default=50, type=int,
+parser.add_argument('--epochs', default=100, type=int,
                     help='epochs to train')
 parser.add_argument('--optim', default='Adam',
                     help='optimizer to use. only support SGD and Adam')
 parser.add_argument('--lr', default=1e-4, type=float,
                     help='learning rate')
-parser.add_argument('--lr_pow', default=0, type=float,
+parser.add_argument('--lr_pow', default=1, type=float,
                     help='power in poly to drop LR')
 parser.add_argument('--warmup_lr', default=1e-6, type=float,
                     help='starting learning rate for warm up')
@@ -69,17 +74,15 @@ parser.add_argument('--no_cuda', action='store_true',
                     help='disable cuda')
 parser.add_argument('--seed', default=277, type=int,
                     help='manual seed')
-parser.add_argument('--disp_iter', type=int, default=2,
+parser.add_argument('--disp_iter', type=int, default=100,
                     help='iterations frequency to display')
 parser.add_argument('--save_every', type=int, default=5,
                     help='epochs frequency to save state_dict')
 args = parser.parse_args()
 
-
 device = torch.device('cuda' if torch.cuda.is_available() and not args.no_cuda
-                        else 'cpu')
+                      else 'cpu')
 print('device:{}'.format(device))
-
 
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -105,7 +108,6 @@ loader_valid = DataLoader(dataset_valid, args.batch_size_valid,
                           num_workers=args.num_workers,
                           pin_memory=not args.no_cuda)
 
-
 # Create model
 model = DuLaNet(args.backbone, gpu=True).to(device)
 
@@ -122,14 +124,29 @@ else:
     raise NotImplementedError()
 
 
+start_epoch = 0
+min_loss = 1e10
+
+if args.mode == "continue" and len(args.ckpt_path) != 0:
+    print("load checkpoint path:{}".format(args.ckpt_path))
+    checkpoint = torch.load(args.ckpt_path)
+    model.load_state_dict(checkpoint['model'])
+    optimizer.load_state_dict(checkpoint['optimizer'])  # 加载优化器参数
+    start_epoch = checkpoint['epoch']
+    min_loss = checkpoint['min_loss']
+# if args.mode == "continue" and len(args.ckpt_path) != 0:
+#     checkpoint = torch.load(args.ckpt_path)
+#     model.load_state_dict(checkpoint)
+
+
 # Init variable
 args.warmup_iters = args.warmup_epochs * len(loader_train)
 args.max_iters = args.epochs * len(loader_train)
 args.running_lr = args.warmup_lr if args.warmup_epochs > 0 else args.lr
-args.cur_iter = 0
+args.cur_iter = start_epoch * len(loader_train)
 
-BCELoss = nn.BCELoss(reduction='sum')
-L1Loss = nn.L1Loss(reduction='sum')
+BCELoss = nn.BCELoss(reduction='mean')
+L1Loss = nn.L1Loss(reduction='mean')
 
 print("arguments:")
 for arg in vars(args):
@@ -143,34 +160,28 @@ print(' start training '.center(80, '='))
 
 
 e2p = E2P(cf.pano_size, cf.fp_size, cf.fp_fov, gpu=True)
-# Start training
-for ith_epoch in range(1, args.epochs + 1):
+writer = SummaryWriter(args.logdir)
 
+# Start training
+for ith_epoch in range(start_epoch, args.epochs + 1):
     model.train()
     torch.set_grad_enabled(True)
     train_loss = 0.0
     for ith_batch, datas in enumerate(loader_train):
         # Set learning rate
-        # adjust_learning_rate(optimizer, args)
+        tools.adjust_learning_rate(optimizer, args)
         args.cur_iter += 1
 
         # Prepare data
         x = torch.cat([datas[i]
-                      for i in range(len(args.input_cat))], dim=1).to(device)
+                       for i in range(len(args.input_cat))], dim=1).to(device)
         h = datas[-1].to(device)
         fc = datas[-2].to(device)
 
         [fp, fp_down] = e2p(fc)
 
-        # plt.imshow(fc[0][0].detach().numpy())
-        # plt.show()
-        # plt.imshow(fp[0][0].detach().numpy())
-        # plt.show()
-
         # Feedforward
-        [fp_, fc_, h_]  = model(x)
-
-
+        [fp_, fc_, h_] = model(x)
 
         # Compute loss
         loss_fc = BCELoss(fc_, fc)
@@ -178,36 +189,27 @@ for ith_epoch in range(1, args.epochs + 1):
         loss_h = L1Loss(h_, h)
         loss = loss_fc + loss_fp + 0.5 * loss_h
 
-
-
         # backprop
         optimizer.zero_grad()
         loss.backward()
+        loss = loss.item()
         # nn.utils.clip_grad_norm_(chain(
         #     encoder.parameters(), edg_decoder.parameters(), cor_decoder.parameters()),
         #     3.0, norm_type='inf')
         optimizer.step()
 
-        # Statitical result
+        # Statical result
         train_loss += loss
-        if args.cur_iter % args.disp_iter == 0:
+        print('\rcur_iter %d | ith_batch %d (epoch %d) | lr %.6f | loss %s' % (
+            args.cur_iter, ith_batch, ith_epoch, args.running_lr, loss), end='', flush=True)
 
+        if args.cur_iter % args.disp_iter == 0:
             ff = fc_.cpu()
             fs = fp_.cpu()
             plt.imshow(ff[0][0].detach().numpy())
             plt.show()
             plt.imshow(fs[0][0].detach().numpy())
             plt.show()
-
-            print('iter %d (epoch %d) | lr %.6f | %s' % (
-                args.cur_iter, ith_epoch, args.running_lr, train_loss/len(loader_train)),
-                flush=True)
-
-    # Dump model
-    if ith_epoch % args.save_every == 0:
-        torch.save(model.state_dict(),
-                   os.path.join(args.ckpt, args.id, '%s_epoch_%d_encoder.pth' % (args.backbone, ith_epoch)))
-        print('model saved')
 
     # Validate
     model.eval()
@@ -217,17 +219,41 @@ for ith_epoch in range(1, args.epochs + 1):
         with torch.no_grad():
             # Prepare data
             x = torch.cat([datas[i]
-                          for i in range(len(args.input_cat))], dim=1).to(device)
-            fc = datas[-1].to(device)
-            [fp, _] = e2p(fc)
+                           for i in range(len(args.input_cat))], dim=1).to(device)
+            h = datas[-1].to(device)
+            fc = datas[-2].to(device)
+            [fp, fp_down] = e2p(fc)
 
             # Feedforward
             [fp_, fc_, h_] = model(x)
 
             # Compute loss
-            loss_fc = criti(fc_, fc)
-            loss_fp = criti(fp_, fp)
-            loss = loss_fc + loss_fp
+            loss_fc = BCELoss(fc_, fc)
+            loss_fp = BCELoss(fp_, fp)
+            loss_h = L1Loss(h_, h)
+            loss = loss_fc + loss_fp + 0.5 * loss_h
 
-            valid_loss += loss
-    print('validation | epoch %d | %s' % (ith_epoch, valid_loss/len(loader_valid)), flush=True)
+            valid_loss += loss.item()
+
+    train_loss /= len(loader_train)
+    valid_loss /= len(loader_valid)
+
+    print("\n")
+    # Dump model
+    if valid_loss < min_loss:
+        min_loss = valid_loss
+        checkpoint = {
+            "model": model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            "epoch": ith_epoch,
+            'min_loss': min_loss
+        }
+        model_path = os.path.join(args.ckpt, args.id, '%s_epoch_%d_%.2f.pth' % (args.backbone, ith_epoch, min_loss))
+        torch.save(checkpoint, model_path)
+        print('model data saved: %s' % model_path)
+
+    print('validation | epoch %d | train %s | valid %s' % (ith_epoch, train_loss, valid_loss))
+
+    writer.add_scalar('train_loss', train_loss, global_step=ith_epoch)
+    writer.add_scalar('valid_loss', valid_loss, global_step=ith_epoch)
+

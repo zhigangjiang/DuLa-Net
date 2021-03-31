@@ -65,8 +65,7 @@ class PanoDataset(data.Dataset):
         pilimg_list = [Image.open(path) for path in path_list]
         if self.contrast:
             p = np.random.uniform(0.5, 2)
-            pilimg_list = [ImageEnhance.Contrast(pil_img).enhance(p)
-                           for pil_img in pilimg_list]
+            pilimg_list[0] = ImageEnhance.Contrast(pilimg_list[0]).enhance(p)
 
         npimg_list = [np.array(pil_img, np.float32) / 255 for pil_img in pilimg_list]
 

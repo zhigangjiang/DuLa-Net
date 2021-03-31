@@ -32,3 +32,17 @@ def var2np(data_lst):
         return np_lst
     else:
         return trans(data_lst)
+
+
+def adjust_learning_rate(optimizer, args):
+    if args.cur_iter < args.warmup_iters:
+        frac = args.cur_iter / args.warmup_iters
+        step = args.lr - args.warmup_lr
+        args.running_lr = args.warmup_lr + step * frac
+    else:
+        frac = (float(args.cur_iter) - args.warmup_iters) / (args.max_iters - args.warmup_iters)
+        scale_running_lr = max((1. - frac), 0.) ** args.lr_pow
+        args.running_lr = args.lr * scale_running_lr
+
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = args.running_lr
