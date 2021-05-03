@@ -12,6 +12,7 @@ By this repo you can estimate the 3D room layout from a single indoor RGB panora
 - OpenCV-Python
 - Pillow / scikit-image
 
+recommend use: `pip install -r requirements.txt` 
 ## Pretrained Model
 
 First, please download the [pretrained models] and copy to ./Model/ckpt/ \
@@ -33,6 +34,17 @@ python demo.py --input figs\001.jpg
 If you want to use other backbone networks(default is resnet18).
 ```
 python demo.py --input figs\001.jpg --backbone resnet50 --ckpt Model\ckpt\res50_realtor.pkl
+```
+
+## Train
+train:
+```
+python --id exp_resnet_18 --mode train --backbon=resnet18 --no_gamma
+```
+
+continue:
+```
+python --id exp_resnet_18 --mode continue --ckpt_path ./Model/ckpt/exp_resnet_18/resnet18_epoch_41_0.45.pth --backbon=resnet18 --no_gamma
 ```
 
 ## More Results

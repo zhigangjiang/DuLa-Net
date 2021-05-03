@@ -11,6 +11,7 @@ from Model import DuLaNet, E2P
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
 import Utils.tools as tools
+import shutil
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--id', required=True,
@@ -23,8 +24,6 @@ parser.add_argument('--ckpt', default='./Model/ckpt',
                     help='folder to output checkpoints')
 parser.add_argument('--ckpt_path', default='',
                     help='checkpoint path for continue train')
-parser.add_argument('--logdir', default='./run/loss',
-                    help='logdir of tensorboard')
 # Dataset related arguments
 parser.add_argument('--root_dir_train', default='data/train',
                     help='root directory for training data')
@@ -57,11 +56,11 @@ parser.add_argument('--optim', default='Adam',
                     help='optimizer to use. only support SGD and Adam')
 parser.add_argument('--lr', default=1e-4, type=float,
                     help='learning rate')
-parser.add_argument('--lr_pow', default=1, type=float,
+parser.add_argument('--lr_pow', default=0, type=float,
                     help='power in poly to drop LR')
 parser.add_argument('--warmup_lr', default=1e-6, type=float,
                     help='starting learning rate for warm up')
-parser.add_argument('--warmup_epochs', default=0, type=int,
+parser.add_argument('--warmup_epochs', default=10, type=int,
                     help='numbers of warmup epochs')
 parser.add_argument('--beta1', default=0.9, type=float,
                     help='momentum for sgd, beta1 for adam')
@@ -74,7 +73,7 @@ parser.add_argument('--no_cuda', action='store_true',
                     help='disable cuda')
 parser.add_argument('--seed', default=277, type=int,
                     help='manual seed')
-parser.add_argument('--disp_iter', type=int, default=100,
+parser.add_argument('--disp_iter', type=int, default=500,
                     help='iterations frequency to display')
 parser.add_argument('--save_every', type=int, default=5,
                     help='epochs frequency to save state_dict')
@@ -107,6 +106,15 @@ loader_valid = DataLoader(dataset_valid, args.batch_size_valid,
                           shuffle=False, drop_last=False,
                           num_workers=args.num_workers,
                           pin_memory=not args.no_cuda)
+log_dir = "./run/{}".format(args.id)
+if os.path.exists(log_dir):
+    shutil.rmtree(log_dir)
+writer = SummaryWriter(log_dir)
+writer_dict = {
+    "train_loss": [],
+    "valid_loss": [],
+    "running_lr": []
+}
 
 # Create model
 model = DuLaNet(args.backbone, gpu=True).to(device)
@@ -123,7 +131,6 @@ elif args.optim == 'Adam':
 else:
     raise NotImplementedError()
 
-
 start_epoch = 0
 min_loss = 1e10
 
@@ -134,6 +141,11 @@ if args.mode == "continue" and len(args.ckpt_path) != 0:
     optimizer.load_state_dict(checkpoint['optimizer'])  # 加载优化器参数
     start_epoch = checkpoint['epoch']
     min_loss = checkpoint['min_loss']
+    writer_dict = checkpoint['writer_dict']
+    for t in writer_dict.keys():
+        for i, s in enumerate(writer_dict[t]):
+            writer.add_scalar(t, s, global_step=i)
+
 # if args.mode == "continue" and len(args.ckpt_path) != 0:
 #     checkpoint = torch.load(args.ckpt_path)
 #     model.load_state_dict(checkpoint)
@@ -158,9 +170,7 @@ print('%d iters per epoch for train' % len(loader_train))
 print('%d iters per epoch for valid' % len(loader_valid))
 print(' start training '.center(80, '='))
 
-
 e2p = E2P(cf.pano_size, cf.fp_size, cf.fp_fov, gpu=True)
-writer = SummaryWriter(args.logdir)
 
 # Start training
 for ith_epoch in range(start_epoch, args.epochs + 1):
@@ -170,6 +180,9 @@ for ith_epoch in range(start_epoch, args.epochs + 1):
     for ith_batch, datas in enumerate(loader_train):
         # Set learning rate
         tools.adjust_learning_rate(optimizer, args)
+        writer.add_scalar('running_lr', args.running_lr, global_step=args.cur_iter)
+        writer_dict['running_lr'].append(args.running_lr)
+
         args.cur_iter += 1
 
         # Prepare data
@@ -239,6 +252,12 @@ for ith_epoch in range(start_epoch, args.epochs + 1):
     valid_loss /= len(loader_valid)
 
     print("\n")
+    print('validation | epoch %d | train %s | valid %s' % (ith_epoch, train_loss, valid_loss))
+    writer.add_scalar('train_loss', train_loss, global_step=ith_epoch)
+    writer_dict['train_loss'].append(train_loss)
+    writer.add_scalar('valid_loss', valid_loss, global_step=ith_epoch)
+    writer_dict['valid_loss'].append(valid_loss)
+
     # Dump model
     if valid_loss < min_loss:
         min_loss = valid_loss
@@ -246,14 +265,12 @@ for ith_epoch in range(start_epoch, args.epochs + 1):
             "model": model.state_dict(),
             'optimizer': optimizer.state_dict(),
             "epoch": ith_epoch,
-            'min_loss': min_loss
+            'min_loss': min_loss,
+            'writer_dict': writer_dict
         }
         model_path = os.path.join(args.ckpt, args.id, '%s_epoch_%d_%.2f.pth' % (args.backbone, ith_epoch, min_loss))
         torch.save(checkpoint, model_path)
         print('model data saved: %s' % model_path)
 
-    print('validation | epoch %d | train %s | valid %s' % (ith_epoch, train_loss, valid_loss))
 
-    writer.add_scalar('train_loss', train_loss, global_step=ith_epoch)
-    writer.add_scalar('valid_loss', valid_loss, global_step=ith_epoch)
 
