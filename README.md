@@ -1,3 +1,6 @@
+# Fork Branch
+Added training script at [train.py](https://github.com/zhigangjiang/DuLa-Net/blob/master/train.py)
+
 # DuLa-Net
 This is the pytorch demo code of our CVPR 2019 paper  
 **DuLa-Net: A Dual-Projection Network for Estimating Room Layouts from a Single RGB Panorama ([Arxiv], [Project])**
